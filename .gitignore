@@ -1,0 +1,11 @@
+*venv*
+node_modules
+pnpm-lock.yaml
+.env*
+*.db
+buy-tech.db
+testeme.db
+*__pycache__/*
+__pycache__
+*.pyc
+.DS_Store
