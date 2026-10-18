@@ -8,7 +8,6 @@ from jwt import ExpiredSignatureError, InvalidTokenError
 from sqlmodel import Session, select
 from decouple import config
 from src.database import get_engine
-from src.models.testeme_user_models import User
 
 SECRET_KEY = config('SECRET_KEY')
 ALGORITHM = config('ALGORITHM')

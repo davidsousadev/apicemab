@@ -12,6 +12,7 @@ from src.models.aluno_models import (
     Aluno, AlunoDispositivo, VincularAlunoRequest, DesvincularAlunoRequest,
     CadastrarAlunoRequest, ImportarAlunosRequest,
 )
+from src.models.users_models import UserM
 
 router = APIRouter()
 

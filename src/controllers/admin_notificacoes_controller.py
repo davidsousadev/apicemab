@@ -16,6 +16,7 @@ from firebase_admin import messaging
 from src.database import get_engine
 from src.firebase_service import ensure_firebase_app
 from src.models.aluno_models import Aluno, AlunoDispositivo, EventoPresenca, NotificacaoAdministrativa, ConfiguracaoAplicativo
+from src.models.users_models import UserM
 from src.controllers.alunos_controller import normalizar_matricula, localizar_aluno_por_matricula
 
 router = APIRouter()

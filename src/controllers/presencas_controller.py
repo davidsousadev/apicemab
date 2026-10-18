@@ -14,6 +14,7 @@ from src.models.aluno_models import (
     Aluno, AlunoDispositivo, EventoPresenca, NotificacaoAdministrativa, EventoPresencaLoteRequest,
     EventoPresencaRequest,
 )
+from src.models.users_models import UserM
 from src.controllers.alunos_controller import normalizar_matricula, localizar_aluno_por_matricula
 
 router = APIRouter()

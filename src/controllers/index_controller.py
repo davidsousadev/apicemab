@@ -11,4 +11,4 @@ def options_index():
 
 @router.get("/", status_code=status.HTTP_200_OK)
 def index():
-    return {"Documentação": "Acesse: https://github.com/davidsousadev/apicemab"}
+    return {"Documentação": "Acesse: https://github.com/davidsousadev/apisme"}

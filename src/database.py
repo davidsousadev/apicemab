@@ -41,6 +41,8 @@ def get_engine():
 
 def init_db():
     # Importa os modelos para registrar suas tabelas no metadata antes do create_all.
+    from src.models.users_models import UserM  # noqa: F401
+    
     from src.models.aluno_models import Aluno, AlunoDispositivo, EventoPresenca, NotificacaoAdministrativa, ConfiguracaoAplicativo  # noqa: F401
 
     SQLModel.metadata.create_all(get_engine())

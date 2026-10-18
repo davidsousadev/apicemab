@@ -4,7 +4,8 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 # Importação de todos controladores
 from .controllers.index_controller import router as index_router
-
+from .controllers.users_controller import router as user_router
+from .controllers.firebase_controller import router as firebase_router
 from .controllers.alunos_controller import router as alunos_router
 from .controllers.presencas_controller import router as presencas_router
 from .controllers.admin_notificacoes_controller import router as admin_notificacoes_router
@@ -17,9 +18,9 @@ def create_app():
 
     # Inicializa a aplicação
     app = FastAPI(
-        title="API CEMAB",
-        description="API CEMAB: serviços gerais, Teste Me e notificações escolares do CEMAB App.",
-        version="1.1.0",
+        title="APIS ME",
+        description="API central APIS ME: serviços gerais, Teste Me e notificações escolares do CEMAB App.",
+        version="1.2.0",
     )
 
     # Configuração de CORS
@@ -40,6 +41,8 @@ def create_app():
     # Registro das rotas
     # /
     app.include_router(index_router, prefix="", tags=["root"])
+    app.include_router(user_router, prefix="/users", tags=["Users"])
+    app.include_router(firebase_router, prefix="/fire", tags=["Firebase"])
     app.include_router(alunos_router, prefix="/alunos", tags=["CEMAB App - Alunos"])
     app.include_router(presencas_router, prefix="/presencas", tags=["CEMAB App - Presenças e notificações"])
     app.include_router(admin_notificacoes_router, prefix="/admin", tags=["CEMAB - Administração de notificações"])
