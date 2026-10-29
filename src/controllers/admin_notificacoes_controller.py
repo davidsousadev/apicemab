@@ -153,7 +153,7 @@ def atualizar_versao_aplicativo(dados: VersaoAplicativoRequest):
 def listar_alunos():
     with Session(get_engine()) as session:
         alunos = session.exec(select(Aluno).where(Aluno.ativo == True).order_by(Aluno.nome_completo)).all()  # noqa: E712
-        return {"success": True, "alunos": [{"matricula": a.matricula, "nome_completo": a.nome_completo} for a in alunos]}
+        return {"success": True, "alunos": [{"matricula": a.matricula, "nome_completo": a.nome_completo, "ativo": a.ativo, "familia_id": a.familia_id} for a in alunos]}
 
 
 @router.get("/api/resumo", dependencies=[Depends(validar_admin)])
