@@ -2,6 +2,7 @@ import os
 from functools import lru_cache
 
 from decouple import config
+from sqlalchemy import inspect, text
 from sqlmodel import SQLModel, create_engine
 
 
@@ -15,9 +16,8 @@ def get_engine():
     database_url = config("DATABASE_URL", default="").strip()
 
     if database_url:
-        # Alguns provedores ainda fornecem postgres:// em vez de postgresql://.
         if database_url.startswith("postgres://"):
-            database_url = "postgresql://" + database_url[len("postgres://"): ]
+            database_url = "postgresql://" + database_url[len("postgres://"):]
         connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
         return create_engine(database_url, pool_pre_ping=True, connect_args=connect_args)
 
@@ -39,11 +39,32 @@ def get_engine():
     return create_engine(sqlite_url, connect_args={"check_same_thread": False} if sqlite_url.startswith("sqlite") else {}, pool_pre_ping=True)
 
 
+def _migrar_schema(engine) -> None:
+    try:
+        with engine.connect() as conn:
+            inspector = inspect(conn)
+            if "aluno" not in inspector.get_table_names():
+                return
+            colunas = {coluna["name"] for coluna in inspector.get_columns("aluno")}
+            if "familia_id" not in colunas:
+                conn.execute(text("ALTER TABLE aluno ADD COLUMN familia_id INTEGER"))
+                conn.commit()
+            indices = {indice["name"] for indice in inspector.get_indexes("aluno")}
+            if "ix_aluno_familia_id" not in indices:
+                try:
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_aluno_familia_id ON aluno (familia_id)"))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+    except Exception as exc:
+        print(f"Aviso: não foi possível aplicar migração de schema: {exc}")
+
+
 def init_db():
-    # Importa os modelos para registrar suas tabelas no metadata antes do create_all.
     from src.models.users_models import UserM  # noqa: F401
-    
+
     from src.models.aluno_models import Aluno, AlunoDispositivo, EventoPresenca, NotificacaoAdministrativa, ConfiguracaoAplicativo  # noqa: F401
 
     SQLModel.metadata.create_all(get_engine())
+    _migrar_schema(get_engine())
     print("Banco de dados inicializado com sucesso!")

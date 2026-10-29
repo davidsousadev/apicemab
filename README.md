@@ -115,3 +115,31 @@ Base: os routers sao montados em `src/main.py`:
 - A automacao externa (Control iD) e responsavel por enviar eventos ja tratados.
 
 > Nunca exponha `ALUNOS_ADMIN_TOKEN`, `CEMAB_EVENT_TOKEN` ou credenciais Firebase no codigo do app ou em repositorio publico.
+
+## Como enviar os dados (exemplos)
+
+### Vincular um unico aluno (formato legado)
+
+JSON valido (sem virgula final):
+
+{"matricula":"12345678","nome_completo":"david sousa da silva","token":"TOKEN_FCM_DO_DISPOSITIVO"}
+
+curl -X POST https://apicemab.vercel.app/alunos/vincular -H "Content-Type: application/json" -d "{\"matricula\":\"12345678\",\"nome_completo\":\"david sousa da silva\",\"token\":\"TOKEN_FCM_DO_DISPOSITIVO\"}"
+
+### Vincular varios alunos (formato lista)
+
+JSON valido:
+
+{"alunos":[{"matricula":"12345678","nome_completo":"david sousa da silva"},{"matricula":"87654321","nome_completo":"outro aluno"}],"token":"TOKEN_FCM_DO_DISPOSITIVO"}
+
+curl -X POST https://apicemab.vercel.app/alunos/vincular -H "Content-Type: application/json" -d "{\"alunos\":[{\"matricula\":\"12345678\",\"nome_completo\":\"david sousa da silva\"},{\"matricula\":\"87654321\",\"nome_completo\":\"outro aluno\"}],\"token\":\"TOKEN_FCM_DO_DISPOSITIVO\"}"
+
+### Desvincular
+
+curl -X POST https://apicemab.vercel.app/alunos/desvincular -H "Content-Type: application/json" -d "{\"matricula\":\"12345678\",\"token\":\"TOKEN_FCM_DO_DISPOSITIVO\"}"
+
+### Consultar vinculo
+
+curl -X GET https://apicemab.vercel.app/alunos/vinculo -H "X-FCM-Token: TOKEN_FCM_DO_DISPOSITIVO"
+
+Observacao: o JSON deve ser valido (sem virgulas finais, aspas duplas). O erro "Expecting property name enclosed in double quotes" ocorre quando ha virgula sobrando antes de fechar o objeto.
