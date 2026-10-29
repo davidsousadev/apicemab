@@ -14,7 +14,9 @@ class Aluno(SQLModel, table=True):
     matricula: str = Field(index=True, unique=True, max_length=40)
     nome_completo: str = Field(max_length=160)
     ativo: bool = Field(default=True, index=True)
-
+    # Agrupamento manual de irmãos (família). Alunos com o mesmo valor
+    # compartilham notificações/dispositivos do responsável.
+    familia_id: Optional[int] = Field(default=None, index=True)
 
 class AlunoDispositivo(SQLModel, table=True):
     """Relacionamento muitos-para-muitos entre alunos e dispositivos FCM."""
@@ -46,9 +48,17 @@ class EventoPresenca(SQLModel, table=True):
     criado_em: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), index=True)
 
 
-class VincularAlunoRequest(BaseModel):
+class VincularAlunoItem(BaseModel):
     matricula: str = PydanticField(min_length=1, max_length=40)
     nome_completo: str = PydanticField(min_length=3, max_length=160)
+
+
+class VincularAlunoRequest(BaseModel):
+    # Compatibilidade com clientes que vinculam um único aluno por vez.
+    matricula: Optional[str] = PydanticField(default=None, min_length=1, max_length=40)
+    nome_completo: Optional[str] = PydanticField(default=None, min_length=3, max_length=160)
+    # Novo formato: lista de alunos vinculados em uma única requisição.
+    alunos: Optional[list[VincularAlunoItem]] = None
     # Token FCM deste aparelho: usado para criar o vínculo no servidor.
     token: str = PydanticField(min_length=10, max_length=4096)
 
@@ -62,6 +72,7 @@ class CadastrarAlunoRequest(BaseModel):
     matricula: str = PydanticField(min_length=1, max_length=40)
     nome_completo: str = PydanticField(min_length=3, max_length=160)
     ativo: bool = True
+    familia_id: Optional[int] = None
 
 
 class ImportarAlunosRequest(BaseModel):

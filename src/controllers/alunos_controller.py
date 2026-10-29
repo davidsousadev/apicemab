@@ -53,54 +53,103 @@ def aluno_publico(aluno: Aluno) -> dict:
     return {"id": aluno.id, "matricula": aluno.matricula, "nome_completo": aluno.nome_completo}
 
 
+def _irmaos(session: Session, aluno: Aluno) -> list[Aluno]:
+    if aluno.familia_id is None:
+        return [aluno]
+    irmaos = session.exec(
+        select(Aluno).where(Aluno.familia_id == aluno.familia_id, Aluno.ativo == True)  # noqa: E712
+    ).all()
+    return irmaos if irmaos else [aluno]
+
+
+def _vincular_par(session: Session, aluno_id: int, user_id: int) -> None:
+    vinculo = session.exec(
+        select(AlunoDispositivo).where(
+            AlunoDispositivo.aluno_id == aluno_id,
+            AlunoDispositivo.user_id == user_id,
+        )
+    ).first()
+    if not vinculo:
+        vinculo = AlunoDispositivo(aluno_id=aluno_id, user_id=user_id)
+        session.add(vinculo)
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            vinculo = session.exec(
+                select(AlunoDispositivo).where(
+                    AlunoDispositivo.aluno_id == aluno_id,
+                    AlunoDispositivo.user_id == user_id,
+                )
+            ).first()
+            if not vinculo:
+                raise HTTPException(status_code=500, detail="Não foi possível concluir o vínculo.")
+    else:
+        session.commit()
+
+
+def _alunos_vinculados_dispositivo(session: Session, user_id: int) -> list[dict]:
+    links = session.exec(select(AlunoDispositivo).where(AlunoDispositivo.user_id == user_id)).all()
+    alunos = []
+    vistos = set()
+    for link in links:
+        aluno = session.get(Aluno, link.aluno_id)
+        if aluno and aluno.ativo and aluno.id not in vistos:
+            vistos.add(aluno.id)
+            alunos.append(aluno_publico(aluno))
+    alunos.sort(key=lambda item: item["nome_completo"])
+    return alunos
+
+
 @router.post("/vincular", status_code=status.HTTP_200_OK)
 def vincular_aluno(dados: VincularAlunoRequest):
-    """Valida matrícula/nome e associa o token FCM ao aluno no banco."""
-    matricula = normalizar_matricula(dados.matricula)
-    nome = normalizar_texto(dados.nome_completo)
-    token = dados.token.strip()
-    if not matricula or not nome or not token:
+    """Valida matrícula/nome e associa o token FCM ao(s) aluno(s) no banco.
+
+    Aceita tanto o formato legado (matricula + nome_completo) quanto o novo
+    formato com a lista `alunos`. Irmãos (mesma família) são vinculados
+    automaticamente ao mesmo dispositivo.
+    """
+    token = (dados.token or "").strip()
+    if not token:
+        raise HTTPException(status_code=422, detail="Informe o token FCM.")
+
+    itens = []
+    if dados.alunos:
+        for item in dados.alunos:
+            itens.append((item.matricula, item.nome_completo))
+    elif dados.matricula and dados.nome_completo:
+        itens.append((dados.matricula, dados.nome_completo))
+    else:
         raise HTTPException(status_code=422, detail="Informe matrícula, nome completo e token FCM.")
 
     with Session(get_engine()) as session:
-        aluno = localizar_aluno_por_matricula(session, matricula)
-        if not aluno or not aluno.ativo or normalizar_texto(aluno.nome_completo) != nome:
-            raise HTTPException(status_code=404, detail="Não foi possível confirmar os dados informados. Verifique a matrícula e o nome completo com a escola.")
-
         dispositivo = session.exec(select(UserM).where(UserM.token == token)).first()
         if not dispositivo:
             raise HTTPException(status_code=409, detail="Este dispositivo ainda não foi registrado. Feche e abra o aplicativo para configurar as notificações e tente novamente.")
 
-        vinculo = session.exec(
-            select(AlunoDispositivo).where(
-                AlunoDispositivo.aluno_id == aluno.id,
-                AlunoDispositivo.user_id == dispositivo.id,
-            )
-        ).first()
-        if not vinculo:
-            vinculo = AlunoDispositivo(aluno_id=aluno.id, user_id=dispositivo.id)
-            session.add(vinculo)
-            try:
-                session.commit()
-            except IntegrityError:
-                session.rollback()
-                # Uma requisição concorrente pode já ter criado o mesmo vínculo.
-                vinculo = session.exec(
-                    select(AlunoDispositivo).where(
-                        AlunoDispositivo.aluno_id == aluno.id,
-                        AlunoDispositivo.user_id == dispositivo.id,
-                    )
-                ).first()
-                if not vinculo:
-                    raise HTTPException(status_code=500, detail="Não foi possível concluir o vínculo.")
-        else:
-            session.commit()
+        alunos_primarios = []
+        for matricula_raw, nome_raw in itens:
+            matricula = normalizar_matricula(matricula_raw)
+            nome = normalizar_texto(nome_raw)
+            if not matricula or not nome:
+                raise HTTPException(status_code=422, detail="Informe matrícula, nome completo e token FCM.")
+            aluno = localizar_aluno_por_matricula(session, matricula)
+            if not aluno or not aluno.ativo or normalizar_texto(aluno.nome_completo) != nome:
+                raise HTTPException(status_code=404, detail="Não foi possível confirmar os dados informados. Verifique a matrícula e o nome completo com a escola.")
+
+            alunos_primarios.append(aluno)
+            for alvo in _irmaos(session, aluno):
+                _vincular_par(session, alvo.id, dispositivo.id)
+
+        alunos = _alunos_vinculados_dispositivo(session, dispositivo.id)
+        principal = aluno_publico(alunos_primarios[0]) if alunos_primarios else (alunos[0] if alunos else None)
 
         return {
             "success": True,
             "vinculo_ativo": True,
             "message": "Aluno validado e dispositivo vinculado com sucesso.",
-            "aluno": aluno_publico(aluno),
+            "aluno": principal,
+            "alunos": alunos,
         }
 
 
@@ -112,7 +161,7 @@ def desvincular_aluno(dados: DesvincularAlunoRequest):
         aluno = localizar_aluno_por_matricula(session, matricula)
         dispositivo = session.exec(select(UserM).where(UserM.token == dados.token.strip())).first()
         if not aluno or not dispositivo:
-            return {"success": True, "vinculado": False, "message": "O dispositivo já não possuía este vínculo."}
+            return {"success": True, "vinculado": False, "message": "O dispositivo já não possuía este vínculo.", "alunos": []}
         vinculo = session.exec(
             select(AlunoDispositivo).where(
                 AlunoDispositivo.aluno_id == aluno.id,
@@ -122,25 +171,22 @@ def desvincular_aluno(dados: DesvincularAlunoRequest):
         if vinculo:
             session.delete(vinculo)
             session.commit()
-        return {"success": True, "vinculado": False, "message": "Aluno desvinculado deste dispositivo."}
+        alunos = _alunos_vinculados_dispositivo(session, dispositivo.id)
+        return {"success": True, "vinculado": False, "message": "Aluno desvinculado deste dispositivo.", "alunos": alunos}
 
 
 @router.get("/vinculo", status_code=status.HTTP_200_OK)
 def consultar_vinculos(token: str | None = Header(default=None, alias="X-FCM-Token", min_length=10, max_length=4096)):
-    """Retorna alunos associados ao dispositivo, sem expor o token na URL."""
+    """Retorna alunos associados ao dispositivo (incluindo irmãos), sem expor o token na URL."""
     if not token:
         raise HTTPException(status_code=401, detail="Token FCM obrigatório.")
     with Session(get_engine()) as session:
         dispositivo = session.exec(select(UserM).where(UserM.token == token.strip())).first()
         if not dispositivo:
             return {"success": True, "alunos": []}
-        links = session.exec(select(AlunoDispositivo).where(AlunoDispositivo.user_id == dispositivo.id)).all()
-        alunos = []
-        for link in links:
-            aluno = session.get(Aluno, link.aluno_id)
-            if aluno and aluno.ativo:
-                alunos.append(aluno_publico(aluno))
+        alunos = _alunos_vinculados_dispositivo(session, dispositivo.id)
         return {"success": True, "alunos": alunos}
+
 
 @router.post("/cadastrar", status_code=status.HTTP_201_CREATED, dependencies=[Depends(validar_admin)])
 def cadastrar_aluno(dados: CadastrarAlunoRequest):
@@ -153,7 +199,7 @@ def cadastrar_aluno(dados: CadastrarAlunoRequest):
         existente = localizar_aluno_por_matricula(session, matricula)
         if existente:
             raise HTTPException(status_code=409, detail="Já existe um aluno cadastrado com essa matrícula.")
-        aluno = Aluno(matricula=matricula, nome_completo=nome, ativo=dados.ativo)
+        aluno = Aluno(matricula=matricula, nome_completo=nome, ativo=dados.ativo, familia_id=dados.familia_id)
         session.add(aluno)
         try:
             session.commit()
@@ -184,9 +230,10 @@ def importar_alunos(dados: ImportarAlunosRequest):
                 aluno.matricula = matricula
                 aluno.nome_completo = nome
                 aluno.ativo = item.ativo
+                aluno.familia_id = item.familia_id
                 atualizados += 1
             else:
-                aluno = Aluno(matricula=matricula, nome_completo=nome, ativo=item.ativo)
+                aluno = Aluno(matricula=matricula, nome_completo=nome, ativo=item.ativo, familia_id=item.familia_id)
                 session.add(aluno)
                 por_matricula[matricula] = aluno
                 criados += 1
